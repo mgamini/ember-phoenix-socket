@@ -9,7 +9,9 @@ $ bower install --save ember-phoenix-socket
  Initialize the socket adapter:
 ```javascript
 window.App = Ember.Application.create();
-PhoenixSocket();
+PhoenixSocket({
+// Options go here
+});
 ```
 
 ## Options
