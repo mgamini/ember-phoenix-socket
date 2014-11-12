@@ -1,0 +1,11 @@
+{
+  "name": "ember-phoenix-socket",
+  "main": "phoenix-socket.js",
+  "homepage": "https://github.com/mgamini/ember-phoenix-socket",
+  "ignore": [
+    ".jshintrc",
+    "**/*.txt"
+  ],
+  "dependencies": {},
+  "devDependencies": {}
+}
