@@ -1,6 +1,12 @@
-(function(ENV) {
-var DS = ENV.storeName,
-   App = ENV.appName;
+var PhoenixSocket = function(ENV) {
+  ENV = ENV || {
+    endpoint: location.protocol.match(/^https/) ? "wss://" + location.host + "/ws" : "ws://" + location.host + "/ws",
+    appName: 'App',
+    storeName: 'DS'
+  }
+
+var DS = window[ENV.storeName],
+   App = window[ENV.appName];
 
 DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
   needs: ['phoenix', 'session'],
@@ -92,7 +98,7 @@ App.PhoenixSocket = Ember.Controller.extend({
   init: function() {
     this.set('topics', Ember.Map.create())
 
-    var sock = new Phoenix.Socket(App.PHOENIX_ENDPOINT);
+    var sock = new Phoenix.Socket(ENV.endpoint);
     sock.onClose = this.get('handleClose').bind(this);
     this.set('socket', sock);
   },
@@ -164,8 +170,4 @@ Ember.onLoad('Ember.Application', function(Application) {
   })
 })
 
-}(ENV || {
-  endpoint: location.protocol.match(/^https/) ? "wss://" + location.host + "/ws" : "ws://" + location.host + "/ws",
-  appName: 'App',
-  storeName: 'DS'
-}))
+}
