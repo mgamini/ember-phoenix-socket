@@ -1,12 +1,16 @@
-var PhoenixSocket = function(ENV) {
-  ENV = ENV || {
-    endpoint: location.protocol.match(/^https/) ? "wss://" + location.host + "/ws" : "ws://" + location.host + "/ws",
-    appName: 'App',
-    storeName: 'DS'
-  }
+var PhoenixSocket = function(params) {
+  window.ENV = window.ENV || {};
+  params = params || {};
+  ENV.Phoenix = {};
 
-var DS = window[ENV.storeName],
-   App = window[ENV.appName];
+  ENV.Phoenix.endpoint = params.endpoint || location.protocol.match(/^https/) ? "wss://" + location.host + "/ws" : "ws://" + location.host + "/ws";
+  ENV.Phoenix.appName = params.appName || 'App';
+  ENV.Phoenix.storeName = params.storeName || 'DS';
+  ENV.Phoenix.init = params.init || {doInit: true, channel: 'data', topic: 'data', params: null};
+
+
+var DS = window[ENV.Phoenix.storeName],
+   App = window[ENV.Phoenix.appName];
 
 App.Phoenix = {};
 
@@ -16,7 +20,7 @@ App.Phoenix.Socket = Ember.Controller.extend({
   init: function() {
     this.set('topics', Ember.Map.create())
 
-    var sock = new Phoenix.Socket(ENV.endpoint);
+    var sock = new Phoenix.Socket(ENV.Phoenix.endpoint);
     sock.onClose = this.get('handleClose').bind(this);
     this.set('socket', sock);
   },
@@ -43,43 +47,41 @@ App.Phoenix.Socket = Ember.Controller.extend({
   }
 })
 
-App.Phoenix.Session = Ember.Controller.extend({
-  needs: ['phoenix'],
-  channel: null,
-  isAuthenticated: false,
-  init: function() {},
-  actions: {
-    join: function(params, success, fail) {
-      this.get('service:phoenix').addTopic('session', 'user', params, function(chan, res) {
-        if (chan == "error") {
-          fail(res)
-        } else {
-          this.set('isAuthenticated', true);
-          this.set('channel', chan);
-          success(res);
-        }
-      }.bind(this))
-    }
-  }
-})
-
 App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
   needs: ['phoenix', 'session'],
-  topic: null,
+  _channel: null,
+  _topic: null,
   _initialized: false,
   _transactions: {},
-  _channel: null,
+  _socket: null,
   setSocket: function(channel, topic) {
-    this.set('topic', topic);
-    this.container.lookup('service:phoenix').addTopic(channel, topic, {}, this.get('setSocketResponse').bind(this))
+    this.set('_channel', channel);
+    this.set('_topic', topic);
   },
-  setSocketResponse: function(chan, res) {
-    chan.on(this.get('topic'), this.get('onData').bind(this));
+  join: function(params) {
+    var txn = App.Phoenix.Transaction.create({params: params})
+    this.container.lookup('service:phoenix').addTopic(
+      this.get('_channel'),
+      this.get('_topic'),
+      params,
+      this.get('onJoin').bind(this, txn)
+    )
+    return txn.promise;
+  },
+  onJoin: function(promise, chan, res) {
+    if (res.success) {
+      chan.on(this.get('_topic'), this.get('onData').bind(this));
 
-    this.set('_channel', chan);
-    this.set('_initialized', true);
+      this.set('_socket', chan);
+      this.set('_initialized', true);
 
-    this.get('unloadQueue').call(this);
+      this.get('unloadQueue').call(this);
+
+      promise.success(res);
+    } else {
+      promise.error(res);
+    }
+    promise.destroy();
   },
   onData: function(data) {
     var caller = this.get('_transactions')[data.uuid];
@@ -97,16 +99,17 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
     var txns = this.get('_transactions');
 
     for (var uuid in txns) {
-      this.get('_channel').send(this.get('topic'), txns[uuid].payload());
+      this.get('_socket').send(this.get('_topic'), txns[uuid].payload());
     }
   },
   ajax: function(url, type, params) {
     var uuid = App.Phoenix.Utils.generateUuid();
     var txn = this.get('_transactions')[uuid] = App.Phoenix.Transaction.create({uuid: uuid, url: url, type: type, params: params})
 
-    if (this.get('_initialized')) {
-      this.get('_channel').send(this.get('topic'), txn.payload());
-    }
+    if (this.get('_initialized'))
+      this.get('_socket').send(this.get('_topic'), txn.payload());
+    else
+      this.get('join').call(this, {})
 
     return txn.promise;
   }
@@ -153,27 +156,18 @@ App.Phoenix.Utils = {
 
 Ember.onLoad('Ember.Application', function(Application) {
   Application.initializer({
-    name: 'session',
-
-    initialize: function(container, application) {
-      application.register('service:session', App.Phoenix.Session, {singleton: true})
-
-      application.inject('controller', 'service:session', 'service:session');
-    }
-  })
-
-  Application.initializer({
     name: 'phoenix',
     initialize: function(container, application) {
       application.register('service:phoenix', App.Phoenix.Socket, {singleton: true})
 
       App.ApplicationAdapter = DS.PhoenixSocketAdapter;
-      container.lookup('adapter:application').setSocket('session', 'data');
 
-      application.inject('service:session', 'service:phoenix', 'service:phoenix')
+      if (ENV.Phoenix.init.doInit) {
+        container.lookup('adapter:application').setSocket(ENV.Phoenix.init.channel, ENV.Phoenix.init.topic);
+        container.lookup('adapter:application').join(ENV.Phoenix.init.params)
+      }
     }
   })
-
 })
 
 }
