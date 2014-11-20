@@ -162,7 +162,7 @@ Ember.onLoad('Ember.Application', function(Application) {
 
       App.ApplicationAdapter = DS.PhoenixSocketAdapter;
 
-      if (ENV.Phoenix.init.doInit) {
+      if (ENV.Phoenix.init && ENV.Phoenix.init.doInit) {
         container.lookup('adapter:application').setSocket(ENV.Phoenix.init.channel, ENV.Phoenix.init.topic);
         container.lookup('adapter:application').join(ENV.Phoenix.init.params)
       }
