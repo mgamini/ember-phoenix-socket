@@ -27,12 +27,8 @@ App.Phoenix.Socket = Ember.Controller.extend({
   addTopic: function(channelName, topicName, channel, message, callback) {
     var topicKey = channelName + ":" + topicName;
 
-    if (this.get('channels').get(topicKey)) {
-      callback(this.get('channels').get(topicKey), true);
-    } else {
-      this.get('channels').set(topicKey, channel);
-      this.get('socket').join(channelName, topicName, message || {}, this.get('handleAddTopic').bind(this, topicKey, callback));
-    }
+    this.get('channels').set(topicKey, channel);
+    this.get('socket').join(channelName, topicName, message || {}, this.get('handleAddTopic').bind(this, topicKey, callback));
   },
   handleAddTopic: function(topicKey, callback, channel) {
     channel.on("join", function(res) {
