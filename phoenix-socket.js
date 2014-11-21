@@ -16,34 +16,36 @@ App.Phoenix = {};
 
 App.Phoenix.Socket = Ember.Controller.extend({
   socket: null,
-  topics: null,
+  channels: null,
   init: function() {
-    this.set('topics', Ember.Map.create())
+    this.set('channels', Ember.Map.create())
 
     var sock = new Phoenix.Socket(ENV.Phoenix.endpoint);
-    sock.onClose = this.get('handleClose').bind(this);
+    sock.onClose(this.get('handleClose').bind(this));
     this.set('socket', sock);
   },
-  addTopic: function(channel, topic, message, callback) {
-    var topicKey = channel + ":" + topic;
+  addTopic: function(channelName, topicName, channel, message, callback) {
+    var topicKey = channelName + ":" + topicName;
 
-    if (this.get('topics').get(topicKey)) {
-      callback(this.get('topics').get(topicKey), true);
+    if (this.get('channels').get(topicKey)) {
+      callback(this.get('channels').get(topicKey), true);
     } else {
-      this.get('socket').join(channel, topic, message || {}, this.get('handleAddTopic').bind(this, topicKey, callback));
+      this.get('channels').set(topicKey, channel);
+      this.get('socket').join(channelName, topicName, message || {}, this.get('handleAddTopic').bind(this, topicKey, callback));
     }
   },
   handleAddTopic: function(topicKey, callback, channel) {
     channel.on("join", function(res) {
-      this.get('topics').set(topicKey, channel);
       callback(channel, res)
     }.bind(this))
     channel.on("error", function(res) {
       callback("error", res)
     })
   },
-  handleClose: function() {
-    console.log('connection closed')
+  handleClose: function(e) {
+    this.get('channels').forEach(function(channel) {
+      channel.onClose(e)
+    })
   }
 })
 
@@ -54,15 +56,19 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
   _initialized: false,
   _transactions: {},
   _socket: null,
+  _header: null,
   setSocket: function(channel, topic) {
     this.set('_channel', channel);
     this.set('_topic', topic);
   },
   join: function(params) {
-    var txn = App.Phoenix.Transaction.create({params: params})
+    var txn = App.Phoenix.Transaction.create({params: params});
+    var topicKey = this.get('_channel') + ":" + this.get('_topic');
+
     this.container.lookup('service:phoenix').addTopic(
       this.get('_channel'),
       this.get('_topic'),
+      this,
       params,
       this.get('onJoin').bind(this, txn)
     )
@@ -95,6 +101,9 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
     caller.destroy();
     delete caller;
   },
+  onClose: function(e) {
+    console.log("channel closed: " + this.get('_topic'))
+  },
   unloadQueue: function() {
     var txns = this.get('_transactions');
 
@@ -104,7 +113,7 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
   },
   ajax: function(url, type, params) {
     var uuid = App.Phoenix.Utils.generateUuid();
-    var txn = this.get('_transactions')[uuid] = App.Phoenix.Transaction.create({uuid: uuid, url: url, type: type, params: params})
+    var txn = this.get('_transactions')[uuid] = App.Phoenix.Transaction.create({uuid: uuid, url: url, type: type, params: params, header: this.get('_header')})
 
     if (this.get('_initialized'))
       this.get('_socket').send(this.get('_topic'), txn.payload());
@@ -120,6 +129,7 @@ App.Phoenix.Transaction = Ember.Object.extend({
   url: null,
   type: null,
   params: null,
+  header: null,
   promise: null,
   success: null,
   error: null,
@@ -135,7 +145,17 @@ App.Phoenix.Transaction = Ember.Object.extend({
     this.set('promise', promise);
   },
   payload: function(url, type, params) {
-    return {uuid: this.get('uuid'), type: this.get('type'), params: this.get('params'), path: this.get('derivePath').call(this) }
+    var payload = {
+      uuid: this.get('uuid'),
+      type: this.get('type'),
+      params: this.get('params'),
+      path: this.get('derivePath').call(this)
+    };
+
+    if (this.get('header'))
+      payload.header = this.get('header')
+
+    return payload;
   },
   derivePath: function() {
     return this.get('url').replace(this.host, "");
@@ -162,9 +182,12 @@ Ember.onLoad('Ember.Application', function(Application) {
 
       App.ApplicationAdapter = DS.PhoenixSocketAdapter;
 
-      if (ENV.Phoenix.init && ENV.Phoenix.init.doInit) {
+      if (ENV.Phoenix.init) {
         container.lookup('adapter:application').setSocket(ENV.Phoenix.init.channel, ENV.Phoenix.init.topic);
-        container.lookup('adapter:application').join(ENV.Phoenix.init.params)
+
+        if (ENV.Phoenix.init.doInit) {
+          container.lookup('adapter:application').join(ENV.Phoenix.init.params)
+        }
       }
     }
   })
