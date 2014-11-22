@@ -113,8 +113,11 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
 
     if (this.get('_initialized'))
       this.get('_socket').send(this.get('_topic'), txn.payload());
-    else
-      this.get('join').call(this, {})
+    else {
+      this.get('join').call(this, {}).catch(function(error) {
+        txn.error({error: "Failed to join channel. Try rejoining.", msg: error});
+      })
+    }
 
     return txn.promise;
   }
