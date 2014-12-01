@@ -1,5 +1,5 @@
-var PhoenixSocket = function(params) {
-  window.ENV = window.ENV || {};
+(function(win) { win.PhoenixSocket = function(params) {
+  win.ENV = win.ENV || {};
   params = params || {};
   ENV.Phoenix = {};
 
@@ -9,8 +9,8 @@ var PhoenixSocket = function(params) {
   ENV.Phoenix.init = params.init || {doInit: true, channel: 'data', topic: 'data', params: null};
 
 
-var DS = window[ENV.Phoenix.storeName],
-   App = window[ENV.Phoenix.appName];
+var DS = win[ENV.Phoenix.storeName],
+   App = win[ENV.Phoenix.appName];
 
 App.Phoenix = {};
 
@@ -192,4 +192,4 @@ Ember.onLoad('Ember.Application', function(Application) {
   })
 })
 
-}
+}})(window);
