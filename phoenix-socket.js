@@ -70,6 +70,10 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
     )
     return txn.promise;
   },
+  leave: function(message) {
+    this.set('_initialized', false);
+    this.get('_socket').leave(message);
+  },
   onJoin: function(promise, chan, res) {
     if (res.success) {
       chan.on(this.get('_topic'), this.get('onData').bind(this));
