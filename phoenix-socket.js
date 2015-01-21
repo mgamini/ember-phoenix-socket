@@ -24,11 +24,9 @@ App.Phoenix.Socket = Ember.Controller.extend({
     sock.onClose(this.get('handleClose').bind(this));
     this.set('socket', sock);
   },
-  addTopic: function(channelName, topicName, channel, message, callback) {
-    var topicKey = channelName + ":" + topicName;
-
+  addTopic: function(topicKey, channel, message, callback) {
     this.get('channels').set(topicKey, channel);
-    this.get('socket').join(channelName, topicName, message || {}, this.get('handleAddTopic').bind(this, topicKey, callback));
+    this.get('socket').join(topicKey, message || {}, this.get('handleAddTopic').bind(this, topicKey, callback));
   },
   handleAddTopic: function(topicKey, callback, channel) {
     channel.on("join", function(res) {
@@ -56,14 +54,13 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
   setSocket: function(channel, topic) {
     this.set('_channel', channel);
     this.set('_topic', topic);
+    this.set('_topicKey', channel + ":" + topic);
   },
   join: function(params) {
     var txn = App.Phoenix.Transaction.create({params: params});
-    var topicKey = this.get('_channel') + ":" + this.get('_topic');
 
     this.container.lookup('service:phoenix').addTopic(
-      this.get('_channel'),
-      this.get('_topic'),
+      this.get('_topicKey'),
       this,
       params,
       this.get('onJoin').bind(this, txn)
@@ -76,7 +73,7 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
   },
   onJoin: function(promise, chan, res) {
     if (res.success) {
-      chan.on(this.get('_topic'), this.get('onData').bind(this));
+      chan.on(this.get('_topicKey'), this.get('onData').bind(this));
 
       this.set('_socket', chan);
       this.set('_initialized', true);
@@ -108,7 +105,7 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
     var txns = this.get('_transactions');
 
     for (var uuid in txns) {
-      this.get('_socket').send(this.get('_topic'), txns[uuid].payload());
+      this.get('_socket').send(this.get('_topicKey'), txns[uuid].payload());
     }
   },
   ajax: function(url, type, params) {
@@ -116,7 +113,7 @@ App.Phoenix.Channel = DS.PhoenixSocketAdapter = DS.RESTAdapter.extend({
     var txn = this.get('_transactions')[uuid] = App.Phoenix.Transaction.create({uuid: uuid, url: url, type: type, params: params, header: this.get('_header')})
 
     if (this.get('_initialized'))
-      this.get('_socket').send(this.get('_topic'), txn.payload());
+      this.get('_socket').send(this.get('_topicKey'), txn.payload());
     else {
       this.get('join').call(this, {}).catch(function(error) {
         txn.error({error: "Failed to join channel. Try rejoining.", msg: error});
